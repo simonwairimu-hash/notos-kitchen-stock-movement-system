@@ -1,0 +1,182 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+  
+    // ==========================================
+    // HELPERS
+    // ==========================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && getUserData().role == 'admin';
+    }
+    
+    function isStoreUser() {
+      return isAuthenticated() && getUserData().role == 'store_user';
+    }
+
+    function isUserActive() {
+      return getUserData().status == 'active';
+    }
+
+    function isStoreActive(storeId) {
+      return get(/databases/$(database)/documents/stores/$(storeId)).data.status != 'disabled';
+    }
+
+    function hasStoreAccess(storeId) {
+      return isAdmin() || (isAuthenticated() && isUserActive() && getUserData().assignedStoreId == storeId && isStoreActive(storeId));
+    }
+
+    function isBootstrapped() {
+      return exists(/databases/$(database)/documents/system/bootstrap);
+    }
+
+    // ==========================================
+    // RULES
+    // ==========================================
+
+    // System metadata and lock document
+    match /system/bootstrap {
+      allow read: if true;
+      allow create: if !isBootstrapped();
+      allow update, delete: if false;
+    }
+
+    // Login attempts rate-limiting records
+    match /loginAttempts/{email} {
+      allow read, write: if true;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow create: if !isBootstrapped() || isAdmin();
+      allow update: if (
+        request.auth.uid == userId &&
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.email == resource.data.email &&
+        request.resource.data.status == resource.data.status &&
+        request.resource.data.name == resource.data.name &&
+        request.resource.data.assignedStoreId == resource.data.assignedStoreId
+      ) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Stores collection
+    match /stores/{storeId} {
+      allow read: if isAuthenticated() && isUserActive();
+      allow create: if !isBootstrapped() || isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    // Global catalog items
+    match /items/{itemId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isUserActive();
+      allow delete: if isAdmin();
+    }
+
+    // Inventory collection (store-specific inventory counts)
+    match /inventory/{inventoryId} {
+      allow get: if isAuthenticated() && isUserActive();
+      allow list: if isAuthenticated() && (resource == null || hasStoreAccess(resource.data.storeId));
+      allow create: if isAuthenticated() && isUserActive();
+      allow update: if isAuthenticated() && isUserActive();
+      allow delete: if isAdmin();
+    }
+
+    // Transactions collection (Immutable Ledger)
+    match /transactions/{transactionId} {
+      allow read: if isAuthenticated() && hasStoreAccess(resource.data.storeId);
+      allow create: if isAuthenticated() && isUserActive() && 
+                    request.resource.data.performedBy == request.auth.uid;
+      allow update, delete: if false; // Immutable ledger
+    }
+
+    // Requisitions
+    match /requisitions/{reqId} {
+      allow read: if isAuthenticated() && isUserActive() && (
+        isAdmin() ||
+        resource == null ||
+        getUserData().assignedStoreId == resource.data.fromStoreId ||
+        getUserData().assignedStoreId == resource.data.toStoreId
+      );
+      allow create: if isAuthenticated() && isUserActive() && (
+        isAdmin() ||
+        getUserData().assignedStoreId == request.resource.data.fromStoreId
+      );
+      allow update: if isAuthenticated() && isUserActive() && (
+        isAdmin() ||
+        getUserData().assignedStoreId == resource.data.fromStoreId ||
+        getUserData().assignedStoreId == resource.data.toStoreId
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Configuration collections (Categories, Departments, Units)
+    match /categories/{catId} {
+      allow read: if isAdmin() || (isAuthenticated() && isUserActive() && resource.data.get('storeId', null) == getUserData().assignedStoreId);
+      allow create: if !isBootstrapped() || isAdmin() || (
+        isAuthenticated() && isUserActive() && 
+        request.resource.data.get('storeId', null) == getUserData().assignedStoreId
+      );
+      allow update: if isAdmin() || (
+        isAuthenticated() && isUserActive() && 
+        resource.data.get('storeId', null) == getUserData().assignedStoreId &&
+        request.resource.data.get('storeId', null) == getUserData().assignedStoreId
+      );
+      allow delete: if isAdmin() || (
+        isAuthenticated() && isUserActive() && 
+        resource.data.get('storeId', null) == getUserData().assignedStoreId
+      );
+    }
+    
+    match /departments/{deptId} {
+      allow read: if isAdmin() || (isAuthenticated() && isUserActive() && resource.data.get('storeId', null) == getUserData().assignedStoreId);
+      allow create: if !isBootstrapped() || isAdmin() || (
+        isAuthenticated() && isUserActive() && 
+        request.resource.data.get('storeId', null) == getUserData().assignedStoreId
+      );
+      allow update: if isAdmin() || (
+        isAuthenticated() && isUserActive() && 
+        resource.data.get('storeId', null) == getUserData().assignedStoreId &&
+        request.resource.data.get('storeId', null) == getUserData().assignedStoreId
+      );
+      allow delete: if isAdmin() || (
+        isAuthenticated() && isUserActive() && 
+        resource.data.get('storeId', null) == getUserData().assignedStoreId
+      );
+    }
+    
+    match /units/{unitId} {
+      allow read: if isAdmin() || (isAuthenticated() && isUserActive() && resource.data.get('storeId', null) == getUserData().assignedStoreId);
+      allow create: if !isBootstrapped() || isAdmin() || (
+        isAuthenticated() && isUserActive() && 
+        request.resource.data.get('storeId', null) == getUserData().assignedStoreId
+      );
+      allow update: if isAdmin() || (
+        isAuthenticated() && isUserActive() && 
+        resource.data.get('storeId', null) == getUserData().assignedStoreId &&
+        request.resource.data.get('storeId', null) == getUserData().assignedStoreId
+      );
+      allow delete: if isAdmin() || (
+        isAuthenticated() && isUserActive() && 
+        resource.data.get('storeId', null) == getUserData().assignedStoreId
+      );
+    }
+
+    // Audit Logs (Write-Once, Read-Only, Admin-Only query)
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated() && isUserActive() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false; // Audit logs are immutable records
+    }
+  }
+}
