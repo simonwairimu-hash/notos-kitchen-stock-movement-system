@@ -254,7 +254,7 @@ export const Reports: React.FC = () => {
     
     const catalogInfo = getCatalogInfo(tx.itemId);
     if (categoryFilter !== 'all' && catalogInfo?.categoryId !== categoryFilter) return false;
-    if (departmentFilter !== 'all' && catalogInfo?.departmentId !== departmentFilter) return false;
+    if (departmentFilter !== 'all' && tx.departmentId !== departmentFilter) return false;
     
     const txDate = tx.createdAt?.toDate();
     if (txDate) {
@@ -311,12 +311,10 @@ export const Reports: React.FC = () => {
       return sum + (tx.quantity * cost);
     }, 0);
 
-  // Consumption (Issues & Damages) per Department
+  // Consumption (Issues) per Department
   const departmentConsumption = departments.map(dept => {
     const consumptionTxs = filteredTransactions.filter(tx => {
-      if (tx.reason !== 'issue' && tx.reason !== 'damage') return false;
-      const catalogInfo = getCatalogInfo(tx.itemId);
-      return catalogInfo?.departmentId === dept.id;
+      return tx.reason === 'issue' && tx.departmentId === dept.id;
     });
 
     const qty = consumptionTxs.reduce((sum, tx) => sum + tx.quantity, 0);
@@ -458,8 +456,8 @@ export const Reports: React.FC = () => {
 
   const mapDeptUsageData = () => {
     return departmentConsumption.filter(d => d.quantity > 0).map(dept => {
-      const issues = filteredTransactions.filter(t => t.reason === 'issue' && getCatalogInfo(t.itemId)?.departmentId === dept.id);
-      const damages = filteredTransactions.filter(t => t.reason === 'damage' && getCatalogInfo(t.itemId)?.departmentId === dept.id);
+      const issues = filteredTransactions.filter(t => t.reason === 'issue' && t.departmentId === dept.id);
+      const damages = filteredTransactions.filter(t => t.reason === 'damage' && t.departmentId === dept.id);
       
       const qtyIssued = issues.reduce((sum, t) => sum + t.quantity, 0);
       const valIssued = issues.reduce((sum, t) => {
@@ -1188,8 +1186,8 @@ export const Reports: React.FC = () => {
                   </tr>
                 ) : (
                   departmentConsumption.filter(d => d.quantity > 0).map((dept, index) => {
-                    const issues = filteredTransactions.filter(t => t.reason === 'issue' && getCatalogInfo(t.itemId)?.departmentId === dept.id);
-                    const damages = filteredTransactions.filter(t => t.reason === 'damage' && getCatalogInfo(t.itemId)?.departmentId === dept.id);
+                    const issues = filteredTransactions.filter(t => t.reason === 'issue' && t.departmentId === dept.id);
+                    const damages = filteredTransactions.filter(t => t.reason === 'damage' && t.departmentId === dept.id);
                     
                     const qtyIssued = issues.reduce((sum, t) => sum + t.quantity, 0);
                     const valIssued = issues.reduce((sum, t) => {

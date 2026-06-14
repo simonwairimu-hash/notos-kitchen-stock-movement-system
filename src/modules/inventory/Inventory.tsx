@@ -158,16 +158,11 @@ export const Inventory: React.FC = () => {
         throw new Error('Cost price must be positive or zero.');
       }
 
-      // Automatically map to a default or matching department since department is not in UI form
-      // Lookup if a department matches or fall back to the first available department
-      const matchingDept = departments.find(d => d.name.toLowerCase() === 'others' || d.name.toLowerCase().includes(cleanName.toLowerCase())) || departments[0];
-      const targetDeptId = matchingDept?.id || 'default_dept';
-
       await registerItemAndAddToInventory({
         storeId: targetStoreId,
         name: cleanName,
         categoryId: newItem.categoryId,
-        departmentId: targetDeptId,
+        departmentId: null,
         unitId: newItem.unitId,
         quantity: openingStockQty,
         minStockLevel: Number(newItem.minStockLevel),

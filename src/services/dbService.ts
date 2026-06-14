@@ -478,7 +478,7 @@ export async function registerItemAndAddToInventory(
     storeId: string;
     name: string;
     categoryId: string;
-    departmentId: string;
+    departmentId?: string | null;
     unitId: string;
     quantity: number;
     minStockLevel: number;
@@ -519,7 +519,7 @@ export async function registerItemAndAddToInventory(
       id: catalogItemId,
       name: cleanName,
       categoryId: itemData.categoryId,
-      departmentId: itemData.departmentId,
+      departmentId: itemData.departmentId || null,
       unitId: itemData.unitId,
       notes: itemData.notes ? validateNotes(itemData.notes) : undefined,
       createdAt: now,
@@ -542,7 +542,7 @@ export async function registerItemAndAddToInventory(
     itemId: catalogItemId,
     itemName: itemData.name.trim(),
     categoryId: itemData.categoryId,
-    departmentId: itemData.departmentId,
+    departmentId: itemData.departmentId || null,
     unitId: itemData.unitId,
     openingStock: itemData.quantity,
     received: 0,

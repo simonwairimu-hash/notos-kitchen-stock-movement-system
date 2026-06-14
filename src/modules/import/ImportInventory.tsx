@@ -79,10 +79,10 @@ export const ImportInventory: React.FC = () => {
   // Download a sample template file
   const handleDownloadTemplate = () => {
     const headers = [
-      ['Item Name', 'Category', 'Department', 'Unit', 'Cost Price', 'Opening Stock', 'Min Stock Threshold'],
-      ['Premium Basmati Rice', 'Dry Goods', 'Main Kitchen', 'kg', '150', '20', '5'],
-      ['Fresh Whole Milk', 'Dairy', 'APA', 'L', '80', '10', '3'],
-      ['Stainless Steel Spoons', 'Cutlery', 'Cutlery Movement', 'pc', '45', '100', '10']
+      ['Item Name', 'Category', 'Unit', 'Cost Price', 'Opening Stock', 'Min Stock Threshold'],
+      ['Premium Basmati Rice', 'Dry Goods', 'kg', '150', '20', '5'],
+      ['Fresh Whole Milk', 'Dairy', 'L', '80', '10', '3'],
+      ['Stainless Steel Spoons', 'Cutlery', 'pc', '45', '100', '10']
     ];
 
     const ws = XLSX.utils.aoa_to_sheet(headers);
@@ -121,7 +121,7 @@ export const ImportInventory: React.FC = () => {
         const headers = rawRows[0].map((h: any) => String(h || '').trim().toLowerCase());
         
         // Required columns validation
-        const requiredHeaders = ['item name', 'category', 'department', 'unit', 'cost price', 'opening stock'];
+        const requiredHeaders = ['item name', 'category', 'unit', 'cost price', 'opening stock'];
         const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
         
         if (missingHeaders.length > 0) {
@@ -131,7 +131,7 @@ export const ImportInventory: React.FC = () => {
         // Map header indices
         const idxName = headers.indexOf('item name');
         const idxCat = headers.indexOf('category');
-        const idxDept = headers.indexOf('department');
+        const idxDept = headers.indexOf('department'); // optional column
         const idxUnit = headers.indexOf('unit');
         const idxCost = headers.indexOf('cost price');
         const idxOpening = headers.indexOf('opening stock');
@@ -156,7 +156,7 @@ export const ImportInventory: React.FC = () => {
           const rowNum = i + 1;
           const itemName = String(row[idxName] || '').trim();
           const categoryName = String(row[idxCat] || '').trim();
-          const departmentName = String(row[idxDept] || '').trim();
+          const departmentName = idxDept !== -1 ? String(row[idxDept] || '').trim() : '';
           const unitName = String(row[idxUnit] || '').trim();
           const costPriceRaw = row[idxCost];
           const openingStockRaw = row[idxOpening];
@@ -172,9 +172,8 @@ export const ImportInventory: React.FC = () => {
           if (!categoryName) errors.push('Category is required');
           else if (!catObj) errors.push(`Category "${categoryName}" does not exist`);
 
-          const deptObj = departmentMap.get(departmentName.toLowerCase());
-          if (!departmentName) errors.push('Department is required');
-          else if (!deptObj) errors.push(`Department "${departmentName}" does not exist`);
+          const deptObj = departmentName ? departmentMap.get(departmentName.toLowerCase()) : null;
+          if (departmentName && !deptObj) errors.push(`Department "${departmentName}" does not exist`);
 
           const unitObj = unitMap.get(unitName.toLowerCase()) || unitNameMap.get(unitName.toLowerCase());
           if (!unitName) errors.push('Unit is required');
@@ -199,7 +198,7 @@ export const ImportInventory: React.FC = () => {
             rowNumber: rowNum,
             itemName,
             categoryName: catObj?.name || categoryName,
-            departmentName: deptObj?.name || departmentName,
+            departmentName: deptObj?.name || '',
             unitName: unitObj?.abbreviation || unitName,
             costPrice: isNaN(costPrice) ? 0 : costPrice,
             openingStock: isNaN(openingStock) ? 0 : openingStock,
@@ -251,7 +250,7 @@ export const ImportInventory: React.FC = () => {
 
         try {
           const categoryId = categoryMap.get(row.categoryName.toLowerCase())!;
-          const departmentId = departmentMap.get(row.departmentName.toLowerCase())!;
+          const departmentId = row.departmentName ? (departmentMap.get(row.departmentName.toLowerCase()) || null) : null;
           const unitId = unitMap.get(row.unitName.toLowerCase())!;
 
           await registerItemAndAddToInventory({

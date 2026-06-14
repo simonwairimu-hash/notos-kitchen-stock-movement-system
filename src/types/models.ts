@@ -50,7 +50,7 @@ export interface CatalogItem {
   id: string;
   name: string;
   categoryId: string;
-  departmentId: string;
+  departmentId?: string | null;
   unitId: string;
   notes?: string;
   createdAt: Timestamp;
@@ -66,7 +66,7 @@ export interface InventoryItem {
   // Denormalized fields for quick views
   itemName: string;
   categoryId: string;
-  departmentId: string;
+  departmentId?: string | null;
   unitId: string;
 
   // Formula Buckets
