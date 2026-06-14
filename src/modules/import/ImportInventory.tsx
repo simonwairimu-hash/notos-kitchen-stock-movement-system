@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useStore } from '../../context/StoreContext';
 import { registerItemAndAddToInventory, subscribeToCategories, subscribeToDepartments, subscribeToUnits, subscribeToInventory } from '../../services/dbService';
@@ -24,6 +25,7 @@ export const ImportInventory: React.FC = () => {
   const { profile, isAdmin } = useAuth();
   const { stores, selectedStoreId, selectedStore } = useStore();
   const { showToast } = useToast();
+  const navigate = useNavigate();
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -289,6 +291,28 @@ export const ImportInventory: React.FC = () => {
 
   const validCount = parsedRows.filter(r => r.status === 'valid').length;
   const invalidCount = parsedRows.filter(r => r.status === 'invalid').length;
+
+  if (stores.length === 0) {
+    return (
+      <div className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm text-center max-w-lg mx-auto mt-10">
+        <Store className="h-12 w-12 text-orange-500 mx-auto mb-4 animate-pulse shrink-0" />
+        <h3 className="text-base font-extrabold text-gray-950">No Store Outlets Configured</h3>
+        <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+          You must create at least one store outlet in the **Store Directory** before you can import bulk inventory items.
+        </p>
+        {isAdmin() && (
+          <div className="mt-6">
+            <button
+              onClick={() => navigate('/admin/stores')}
+              className="inline-flex items-center justify-center py-2.5 px-5 rounded-xl text-xs font-bold text-white bg-orange-500 hover:bg-orange-600 transition-colors shadow-md shadow-orange-500/10"
+            >
+              Go to Store Directory
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
