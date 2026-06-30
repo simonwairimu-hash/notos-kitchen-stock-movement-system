@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useStore } from '../../context/StoreContext';
 import { useToast } from '../../context/ToastContext';
@@ -17,9 +17,113 @@ import {
   AlertCircle, 
   ArrowLeftRight, 
   Store as StoreIcon, 
-  X
+  X,
+  Search,
+  ChevronDown
 } from 'lucide-react';
 import { Timestamp } from 'firebase/firestore';
+
+interface SearchableSelectProps {
+  options: { id: string; name: string; quantity?: number; unit?: string }[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}
+
+const SearchableSelect: React.FC<SearchableSelectProps> = ({
+  options,
+  value,
+  onChange,
+  placeholder = 'Search and select...'
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find(opt => opt.id === value);
+
+  const filteredOptions = options.filter(opt =>
+    opt.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <div ref={wrapperRef} className="relative w-full">
+      {/* Trigger Button */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-semibold text-gray-700 focus:border-orange-500 focus:outline-none flex items-center justify-between cursor-pointer"
+      >
+        <span className={selectedOption ? 'text-gray-800 font-bold' : 'text-gray-400'}>
+          {selectedOption ? selectedOption.name : placeholder}
+        </span>
+        <ChevronDown className="h-4 w-4 text-gray-400" />
+      </button>
+
+      {/* Dropdown Overlay */}
+      {isOpen && (
+        <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden flex flex-col max-h-60">
+          {/* Search Box */}
+          <div className="p-2 border-b border-gray-100 flex items-center gap-1.5 bg-gray-50 flex-shrink-0">
+            <Search className="h-3.5 w-3.5 text-gray-400 ml-1 flex-shrink-0" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search item..."
+              className="w-full bg-transparent text-xs font-semibold text-gray-700 focus:outline-none"
+              autoFocus
+            />
+          </div>
+
+          {/* List Options */}
+          <div className="overflow-y-auto flex-1 py-1">
+            {filteredOptions.length === 0 ? (
+              <div className="px-3 py-4 text-center text-xs text-gray-400 font-semibold">
+                No items found
+              </div>
+            ) : (
+              filteredOptions.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => {
+                    onChange(opt.id);
+                    setIsOpen(false);
+                    setSearchTerm('');
+                  }}
+                  className={`w-full text-left px-3 py-2.5 text-xs transition-colors flex justify-between items-center ${
+                    value === opt.id
+                      ? 'bg-orange-50 text-[#EA580C] font-bold'
+                      : 'hover:bg-gray-50 text-gray-700 font-semibold'
+                  }`}
+                >
+                  <span className="truncate mr-2">{opt.name}</span>
+                  {opt.quantity !== undefined && (
+                    <span className="text-[10px] text-gray-400 font-bold shrink-0">
+                      Bal: {opt.quantity} {opt.unit || ''}
+                    </span>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 
 export const Movements: React.FC = () => {
   const { profile, isAdmin } = useAuth();
@@ -43,7 +147,7 @@ export const Movements: React.FC = () => {
   const [filterType, setFilterType] = useState<string>('');
 
   // Modals state
-  const [activeModal, setActiveModal] = useState<'receive' | 'issue' | 'damage' | 'transfer' | null>(null);
+  const [activeModal, setActiveModal] = useState<'receive' | 'issue' | 'damage' | 'transfer_out' | 'transfer_in' | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   // Form states
@@ -52,6 +156,7 @@ export const Movements: React.FC = () => {
     quantity: '',
     departmentId: '',
     toStoreId: '',
+    fromStoreId: '',
     notes: '',
     unitCost: '',
     supplierName: '',
@@ -103,6 +208,19 @@ export const Movements: React.FC = () => {
     return () => unsubscribe();
   }, [activeStoreId]);
 
+  // Subscribe to source store inventory items (for Transfer In modal dropdown)
+  const [sourceInventoryItems, setSourceInventoryItems] = useState<InventoryItem[]>([]);
+  useEffect(() => {
+    if (activeModal !== 'transfer_in' || !formData.fromStoreId) {
+      setSourceInventoryItems([]);
+      return;
+    }
+    const unsubscribe = subscribeToInventory(formData.fromStoreId, (items) => {
+      setSourceInventoryItems(items);
+    });
+    return () => unsubscribe();
+  }, [activeModal, formData.fromStoreId]);
+
   // Subscribe to static lists (departments, units)
   useEffect(() => {
     const unsubDepts = subscribeToDepartments(activeStoreId, setDepartments);
@@ -127,7 +245,7 @@ export const Movements: React.FC = () => {
   };
 
   // Check Active Store selection before opening a modal
-  const handleOpenModal = (modalType: 'receive' | 'issue' | 'damage' | 'transfer') => {
+  const handleOpenModal = (modalType: 'receive' | 'issue' | 'damage' | 'transfer_out' | 'transfer_in') => {
     if (!activeStoreId) {
       showToast('Select a store first', 'error');
       return;
@@ -137,6 +255,7 @@ export const Movements: React.FC = () => {
       quantity: '',
       departmentId: departments[0]?.id || '',
       toStoreId: stores.find(s => s.id !== activeStoreId && s.status !== 'disabled')?.id || '',
+      fromStoreId: stores.find(s => s.id !== activeStoreId && s.status !== 'disabled')?.id || '',
       notes: '',
       unitCost: '',
       supplierName: '',
@@ -147,10 +266,11 @@ export const Movements: React.FC = () => {
 
   // Reset selected item if it becomes invalid after inventory changes
   useEffect(() => {
-    if (formData.itemId && !inventoryItems.some(i => i.id === formData.itemId)) {
+    const items = activeModal === 'transfer_in' ? sourceInventoryItems : inventoryItems;
+    if (formData.itemId && !items.some(i => i.id === formData.itemId)) {
       setFormData(prev => ({ ...prev, itemId: '' }));
     }
-  }, [inventoryItems]);
+  }, [inventoryItems, sourceInventoryItems, activeModal]);
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -220,7 +340,7 @@ export const Movements: React.FC = () => {
           formData.notes || null
         );
         showToast('Damage recorded successfully.');
-      } else if (activeModal === 'transfer') {
+      } else if (activeModal === 'transfer_out') {
         if (!formData.toStoreId) {
           showToast('Please select a destination store.', 'error');
           setSubmitting(false);
@@ -234,6 +354,20 @@ export const Movements: React.FC = () => {
           formData.notes || null
         );
         showToast('Stock transferred successfully.');
+      } else if (activeModal === 'transfer_in') {
+        if (!formData.fromStoreId) {
+          showToast('Please select a source store.', 'error');
+          setSubmitting(false);
+          return;
+        }
+        await transferStock(
+          formData.itemId,
+          activeStoreId,
+          qty,
+          performedBy,
+          formData.notes || null
+        );
+        showToast('Stock received via transfer successfully.');
       }
 
       setActiveModal(null);
@@ -247,10 +381,11 @@ export const Movements: React.FC = () => {
   // Filter movements
   const filteredMovements = movements.filter(move => {
     if (!filterType) return true;
-    if (filterType === 'receive') return move.reason === 'receive' || move.reason === 'transfer_in';
+    if (filterType === 'receive') return move.reason === 'receive';
     if (filterType === 'issue') return move.reason === 'issue';
     if (filterType === 'damage') return move.reason === 'damage';
-    if (filterType === 'transfer') return move.reason === 'transfer_in' || move.reason === 'transfer_out';
+    if (filterType === 'transfer_in') return move.reason === 'transfer_in';
+    if (filterType === 'transfer_out') return move.reason === 'transfer_out';
     if (filterType === 'opening') return move.reason === 'opening';
     return true;
   });
@@ -328,11 +463,18 @@ export const Movements: React.FC = () => {
           Damage
         </button>
         <button
-          onClick={() => handleOpenModal('transfer')}
+          onClick={() => handleOpenModal('transfer_out')}
           className="bg-[#8B5CF6] hover:bg-[#7C3AED] text-white flex items-center justify-center gap-1.5 py-3 px-6 rounded-xl font-bold text-sm shadow-sm transition-colors flex-1"
         >
           <ArrowLeftRight className="h-4 w-4" />
-          Transfer
+          Transfer Out
+        </button>
+        <button
+          onClick={() => handleOpenModal('transfer_in')}
+          className="bg-[#6366F1] hover:bg-[#4F46E5] text-white flex items-center justify-center gap-1.5 py-3 px-6 rounded-xl font-bold text-sm shadow-sm transition-colors flex-1"
+        >
+          <ArrowLeftRight className="h-4 w-4" />
+          Transfer In
         </button>
       </div>
 
@@ -347,10 +489,11 @@ export const Movements: React.FC = () => {
               className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold text-gray-700 focus:border-orange-500 focus:outline-none"
             >
               <option value="">All Types</option>
-              <option value="receive">Receive</option>
+              <option value="receive">Receive (Direct)</option>
               <option value="issue">Issue</option>
               <option value="damage">Damage</option>
-              <option value="transfer">Transfer</option>
+              <option value="transfer_in">Transfer In</option>
+              <option value="transfer_out">Transfer Out</option>
               <option value="opening">Opening Stock</option>
             </select>
           </div>
@@ -524,41 +667,42 @@ export const Movements: React.FC = () => {
       {/* Modals overlay */}
       {activeModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-xl w-full max-w-md p-6 relative animate-scale-up">
+          <div className="bg-white rounded-3xl shadow-xl w-full max-w-md p-6 relative animate-scale-up max-h-[90vh] flex flex-col">
             {/* Close */}
             <button
               onClick={() => setActiveModal(null)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
             >
               <X className="h-5 w-5" />
             </button>
 
             {/* Header */}
-            <h3 className="text-lg font-bold text-gray-900 mb-4 capitalize">
+            <h3 className="text-lg font-bold text-gray-900 mb-4 capitalize flex-shrink-0 animate-fade-in">
               {activeModal === 'receive' && 'Receive Stock'}
               {activeModal === 'issue' && 'Issue Stock'}
               {activeModal === 'damage' && 'Record Damage'}
-              {activeModal === 'transfer' && 'Transfer Out'}
+              {activeModal === 'transfer_out' && 'Transfer Out'}
+              {activeModal === 'transfer_in' && 'Transfer In'}
             </h3>
 
             {/* Form */}
-            <form onSubmit={handleFormSubmit} className="space-y-4">
+            <form onSubmit={handleFormSubmit} className="space-y-4 overflow-y-auto pr-1 flex-1">
               {/* Item selection */}
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1.5">
                   Item *
                 </label>
-                <select
+                <SearchableSelect
+                  options={(activeModal === 'transfer_in' ? sourceInventoryItems : inventoryItems).map(item => ({
+                    id: item.id,
+                    name: item.itemName,
+                    quantity: item.quantity,
+                    unit: getUnitAbbreviation(item.unitId)
+                  }))}
                   value={formData.itemId}
-                  onChange={(e) => setFormData({ ...formData, itemId: e.target.value })}
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-semibold text-gray-700 focus:border-orange-500 focus:outline-none"
-                  required
-                >
-                  <option value="">Select an item...</option>
-                  {inventoryItems.map(item => (
-                    <option key={item.id} value={item.id}>{item.itemName}</option>
-                  ))}
-                </select>
+                  onChange={(val) => setFormData({ ...formData, itemId: val })}
+                  placeholder="Select an item..."
+                />
               </div>
 
               {/* Quantity */}
@@ -645,8 +789,8 @@ export const Movements: React.FC = () => {
                 </div>
               )}
 
-              {/* Destination Store (Transfer only) */}
-              {activeModal === 'transfer' && (
+              {/* Destination Store (Transfer Out only) */}
+              {activeModal === 'transfer_out' && (
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1.5">
                     Transfer To Store *
@@ -658,6 +802,29 @@ export const Movements: React.FC = () => {
                     required
                   >
                     <option value="">Destination store</option>
+                    {stores
+                      .filter(s => s.id !== activeStoreId && s.status !== 'disabled')
+                      .map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))
+                    }
+                  </select>
+                </div>
+              )}
+
+              {/* Source Store (Transfer In only) */}
+              {activeModal === 'transfer_in' && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Transfer From Store *
+                  </label>
+                  <select
+                    value={formData.fromStoreId}
+                    onChange={(e) => setFormData({ ...formData, fromStoreId: e.target.value })}
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-xs font-semibold text-gray-700 focus:border-orange-500 focus:outline-none"
+                    required
+                  >
+                    <option value="">Source store</option>
                     {stores
                       .filter(s => s.id !== activeStoreId && s.status !== 'disabled')
                       .map(s => (
@@ -714,14 +881,15 @@ export const Movements: React.FC = () => {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full bg-[#EA580C] hover:bg-[#C2410C] text-white rounded-xl py-3 text-sm font-bold shadow-sm transition-colors mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-[#EA580C] hover:bg-[#C2410C] text-white rounded-xl py-3 text-sm font-bold shadow-sm transition-colors mt-4 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
               >
                 {submitting ? 'Confirming...' : (
                   <>
                     {activeModal === 'receive' && 'Confirm Receive Stock'}
                     {activeModal === 'issue' && 'Confirm Issue Stock'}
                     {activeModal === 'damage' && 'Confirm Record Damage'}
-                    {activeModal === 'transfer' && 'Confirm Transfer Out'}
+                    {activeModal === 'transfer_out' && 'Confirm Transfer Out'}
+                    {activeModal === 'transfer_in' && 'Confirm Transfer In'}
                   </>
                 )}
               </button>
